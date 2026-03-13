@@ -99,17 +99,9 @@ export default async function CardapioWebPage({ searchParams }: PageProps) {
           </div>
 
           <p style={{ color: "#aaa", fontSize: 12, textAlign: "right", marginTop: 8 }}>
-            Atualizado em{" "}
-            {new Date(metrics.fetchedAt).toLocaleString("pt-BR")}
+            Atualizado em {new Date(metrics.fetchedAt).toLocaleString("pt-BR")}
             {" · "}
-            Recorrentes = compraram também no período anterior de{" "}
-            {metrics.totalOrders > 0
-              ? `${Math.round(
-                  (new Date(metrics.periodEnd).getTime() -
-                    new Date(metrics.periodStart).getTime()) /
-                    (1000 * 60 * 60 * 24)
-                )} dias`
-              : "–"}
+            Recorrente = comprou pelo menos 1x antes do período · Novo = nunca comprou antes
           </p>
         </>
       )}

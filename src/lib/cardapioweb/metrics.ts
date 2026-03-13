@@ -1,18 +1,16 @@
 /**
  * Cálculo de métricas de negócio a partir dos pedidos CardápioWeb.
  *
- * Estratégia para novos vs recorrentes:
- *   - Buscamos o histórico do período ANTERIOR (mesma duração) para montar
- *     uma lista de customer IDs já conhecidos.
- *   - Se o customer.id do período atual NÃO existia antes → novo cliente.
- *   - Se já existia → recorrente.
+ * Novo cliente    = nunca comprou na loja antes do período selecionado.
+ * Recorrente      = comprou pelo menos 1x antes do período selecionado.
+ *
+ * Estratégia: buscamos TODO o histórico disponível ANTES do período
+ * selecionado (até 3 anos atrás, em janelas de 6 meses conforme limite da API).
+ * O histórico é cacheado por 1 hora pois dados antigos raramente mudam.
  */
 
-import {
-  getAllOrderSummaries,
-  getOrderDetailsBatch,
-  type OrderDetail,
-} from "./client";
+import { getAllOrderSummaries, getOrderDetailsBatch } from "./client";
+import { cachedFetch } from "./cache";
 
 export interface DashboardMetrics {
   totalOrders: number;
@@ -25,67 +23,109 @@ export interface DashboardMetrics {
   fetchedAt: string;
 }
 
-function subtractDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() - days);
-  return d.toISOString();
+/** Divide um intervalo grande em janelas de no máximo 6 meses. */
+function splitInto6MonthWindows(
+  from: Date,
+  to: Date
+): Array<{ start: string; end: string }> {
+  const windows: Array<{ start: string; end: string }> = [];
+  let cursor = new Date(from);
+
+  while (cursor < to) {
+    const windowEnd = new Date(cursor);
+    windowEnd.setMonth(windowEnd.getMonth() + 6);
+    if (windowEnd > to) windowEnd.setTime(to.getTime());
+
+    windows.push({
+      start: cursor.toISOString(),
+      end: windowEnd.toISOString(),
+    });
+
+    cursor = new Date(windowEnd);
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  return windows;
 }
 
-function periodDurationDays(start: string, end: string): number {
-  const diff = new Date(end).getTime() - new Date(start).getTime();
-  return Math.ceil(diff / (1000 * 60 * 60 * 24));
+/**
+ * Retorna o conjunto de customer IDs que compraram ANTES de `beforeDate`.
+ * Busca até 3 anos de histórico. Resultado cacheado por 1 hora.
+ */
+async function getHistoricalCustomerIds(
+  beforeDate: string
+): Promise<Set<number>> {
+  const cacheKey = `historical-customers:${beforeDate.slice(0, 10)}`;
+
+  return cachedFetch(
+    cacheKey,
+    async () => {
+      const periodEnd = new Date(beforeDate);
+      periodEnd.setDate(periodEnd.getDate() - 1);
+
+      const periodStart = new Date(beforeDate);
+      periodStart.setFullYear(periodStart.getFullYear() - 3);
+
+      if (periodStart >= periodEnd) return new Set<number>();
+
+      const windows = splitInto6MonthWindows(periodStart, periodEnd);
+
+      // Busca todos os resumos de pedidos em todas as janelas
+      const allSummaryResults = await Promise.all(
+        windows.map((w) => getAllOrderSummaries(w.start, w.end, ["closed"]))
+      );
+
+      const allIds = allSummaryResults.flatMap((r) =>
+        r.summaries.map((o) => o.id)
+      );
+
+      if (allIds.length === 0) return new Set<number>();
+
+      // Busca detalhes para extrair customer.id
+      const details = await getOrderDetailsBatch(allIds);
+
+      const customerIds = new Set<number>();
+      details.forEach((o) => {
+        if (o.customer?.id != null) customerIds.add(o.customer.id);
+      });
+
+      return customerIds;
+    },
+    60 * 60 * 1000 // 1 hora de cache para histórico
+  );
 }
 
 export async function computeMetrics(
   startDate: string,
   endDate: string
 ): Promise<DashboardMetrics> {
-  const durationDays = periodDurationDays(startDate, endDate);
-
-  // Período anterior (mesma duração) para identificar clientes conhecidos
-  const prevEnd = subtractDays(startDate, 1);
-  const prevStart = subtractDays(prevEnd, durationDays - 1);
-
-  // Busca resumos dos dois períodos em paralelo (apenas closed)
-  const [currentResult, previousResult] = await Promise.all([
+  // Busca pedidos do período atual e histórico de clientes em paralelo
+  const [currentResult, historicalCustomerIds] = await Promise.all([
     getAllOrderSummaries(startDate, endDate, ["closed"]),
-    getAllOrderSummaries(prevStart, prevEnd, ["closed"]),
+    getHistoricalCustomerIds(startDate),
   ]);
 
-  // Busca detalhes completos dos dois períodos em paralelo
   const currentIds = currentResult.summaries.map((o) => o.id);
-  const previousIds = previousResult.summaries.map((o) => o.id);
-
-  const [currentDetails, previousDetails] = await Promise.all([
-    getOrderDetailsBatch(currentIds),
-    getOrderDetailsBatch(previousIds),
-  ]);
-
-  // IDs de clientes que compraram no período anterior
-  const previousCustomerIds = new Set(
-    previousDetails
-      .map((o) => o.customer?.id)
-      .filter((id): id is number => id != null)
-  );
-
-  // Métricas do período atual
+  const currentDetails = await getOrderDetailsBatch(currentIds);
   const closedOrders = currentDetails.filter((o) => o.status === "closed");
 
+  // Métricas financeiras
   const revenue = closedOrders.reduce((sum, o) => sum + (o.total ?? 0), 0);
   const totalOrders = closedOrders.length;
   const averageTicket = totalOrders > 0 ? revenue / totalOrders : 0;
 
   // Clientes únicos no período atual
-  const currentCustomerMap = new Map<number, true>();
-  closedOrders.forEach((o) => {
-    if (o.customer?.id != null) currentCustomerMap.set(o.customer.id, true);
-  });
+  const uniqueCurrentCustomers = new Set(
+    closedOrders
+      .map((o) => o.customer?.id)
+      .filter((id): id is number => id != null)
+  );
 
   let newCustomers = 0;
   let recurringCustomers = 0;
 
-  currentCustomerMap.forEach((_, customerId) => {
-    if (previousCustomerIds.has(customerId)) {
+  uniqueCurrentCustomers.forEach((customerId) => {
+    if (historicalCustomerIds.has(customerId)) {
       recurringCustomers++;
     } else {
       newCustomers++;

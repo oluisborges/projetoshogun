@@ -28,11 +28,12 @@ export function cacheSet<T>(key: string, data: T): void {
 
 export async function cachedFetch<T>(
   key: string,
-  fn: () => Promise<T>
+  fn: () => Promise<T>,
+  ttlMs = TTL_MS
 ): Promise<T> {
   const cached = cacheGet<T>(key);
   if (cached !== null) return cached;
   const data = await fn();
-  cacheSet(key, data);
+  store.set(key, { data, expiresAt: Date.now() + ttlMs });
   return data;
 }
