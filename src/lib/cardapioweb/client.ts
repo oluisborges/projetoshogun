@@ -1,11 +1,12 @@
 /**
  * CardápioWeb API Client
- * Docs: https://cardapioweb.stoplight.io/docs/api/gr82prcl4v2jr-introducao
- *
- * Autenticação: token Bearer gerado em Configurações → Integrações → API de Integração
+ * Base: https://integracao.sandbox.cardapioweb.com
+ * Auth: Bearer token (Configurações → Integrações → API de Integração)
  */
 
-const BASE_URL = "https://api.cardapioweb.com";
+const BASE_URL =
+  process.env.CARDAPIOWEB_BASE_URL ??
+  "https://integracao.sandbox.cardapioweb.com";
 
 function getHeaders() {
   const token = process.env.CARDAPIOWEB_TOKEN;
@@ -16,15 +17,15 @@ function getHeaders() {
   };
 }
 
-async function request<T>(path: string): Promise<T> {
+async function request<T>(path: string, noCache = false): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     headers: getHeaders(),
-    next: { revalidate: 300 }, // cache por 5 min (Next.js fetch cache)
+    next: noCache ? { revalidate: 0 } : { revalidate: 300 },
   });
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`CardápioWeb API erro ${res.status}: ${text}`);
+    throw new Error(`CW API ${res.status} em ${path}: ${text}`);
   }
 
   return res.json() as Promise<T>;
@@ -32,107 +33,143 @@ async function request<T>(path: string): Promise<T> {
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-export interface StoreInfo {
+export interface OrderSummary {
   id: number;
-  name: string;
-  slug: string;
-  address: string;
-  phone: string;
-  logo: string;
-  instagram: string;
-  openingHours: OpeningHour[];
-  paymentMethods: string[];
+  status: "waiting_confirmation" | "confirmed" | "closed" | "canceled" | string;
+  order_type: "delivery" | "takeout" | "onsite" | "closed_table" | string;
+  order_timing: "immediate" | "scheduled" | string;
+  sales_channel: string;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface OpeningHour {
-  dayOfWeek: string;
-  open: string;
-  close: string;
+export interface Pagination {
+  current_page: number;
+  total_pages: number;
+  total_orders: number;
 }
 
-export interface Catalog {
-  categories: Category[];
+export interface OrderHistoryResponse {
+  orders: OrderSummary[];
+  pagination: Pagination;
 }
 
-export interface Category {
+export interface OrderDetail {
   id: number;
-  name: string;
-  description: string;
-  products: Product[];
-}
-
-export interface Product {
-  id: number;
-  name: string;
-  description: string;
-  price: number;
-  promotionalPrice: number | null;
-  image: string | null;
-  available: boolean;
-  addons: Addon[];
-}
-
-export interface Addon {
-  id: number;
-  name: string;
-  required: boolean;
-  min: number;
-  max: number;
-  options: AddonOption[];
-}
-
-export interface AddonOption {
-  id: number;
-  name: string;
-  price: number;
-}
-
-export interface Order {
-  id: string;
+  display_id: number;
+  external_display_id: string | null;
+  merchant_id: number;
   status: string;
-  createdAt: string;
+  order_type: string;
+  order_timing: string;
+  sales_channel: string;
+  customer_origin: string | null;
+  table_number: string | null;
+  estimated_time: number | null;
+  cancellation_reason: string | null;
+  fiscal_document: string | null;
+  observation: string | null;
+  delivery_fee: number;
+  service_fee: number;
+  additional_fee: number;
   total: number;
+  created_at: string;
+  updated_at: string;
+  schedule: unknown | null;
   customer: {
+    id: number;
     name: string;
     phone: string;
-  };
+  } | null;
+  delivery_address: unknown | null;
   items: OrderItem[];
+  discounts: Discount[];
+  payments: Payment[];
 }
 
 export interface OrderItem {
-  productId: number;
-  productName: string;
+  id: number;
+  name: string;
   quantity: number;
-  unitPrice: number;
-  totalPrice: number;
+  unit_price: number;
+  total_price: number;
+  options: unknown[];
 }
 
-// ─── Métodos da API ───────────────────────────────────────────────────────────
-
-const storeId = () => {
-  const id = process.env.CARDAPIOWEB_STORE_ID;
-  if (!id) throw new Error("CARDAPIOWEB_STORE_ID não configurado no .env.local");
-  return id;
-};
-
-/** Retorna informações da loja: endereço, horários, pagamentos, etc. */
-export async function getStoreInfo(): Promise<StoreInfo> {
-  return request<StoreInfo>(`/v1/stores/${storeId()}`);
+export interface Discount {
+  type: string;
+  value: number;
+  description: string;
 }
 
-/** Retorna o catálogo completo: categorias, produtos e complementos. */
-export async function getCatalog(): Promise<Catalog> {
-  return request<Catalog>(`/v1/stores/${storeId()}/catalog`);
+export interface Payment {
+  method: string;
+  status: string;
+  value: number;
 }
 
-/** Lista pedidos com paginação. */
-export async function getOrders(page = 1, limit = 20): Promise<Order[]> {
-  return request<Order[]>(
-    `/v1/stores/${storeId()}/orders?page=${page}&limit=${limit}`
+// ─── Funções da API ───────────────────────────────────────────────────────────
+
+/** Histórico de pedidos com paginação. start/end em ISO 8601. */
+export async function getOrderHistory(
+  startDate: string,
+  endDate: string,
+  page = 1,
+  perPage = 100,
+  status: string[] = ["closed", "canceled"]
+): Promise<OrderHistoryResponse> {
+  const params = new URLSearchParams({
+    start_date: startDate,
+    end_date: endDate,
+    page: String(page),
+    per_page: String(perPage),
+  });
+  status.forEach((s) => params.append("status[]", s));
+
+  return request<OrderHistoryResponse>(
+    `/api/partner/v1/orders/history?${params}`,
+    true
   );
 }
 
-/** Retorna um pedido específico pelo ID. */
-export async function getOrder(orderId: string): Promise<Order> {
-  return request<Order>(`/v1/stores/${storeId()}/orders/${orderId}`);
+/** Detalhe completo de um pedido (inclui customer e total). */
+export async function getOrderDetail(orderId: number): Promise<OrderDetail> {
+  return request<OrderDetail>(`/api/partner/v1/orders/${orderId}`, true);
+}
+
+/** Busca TODAS as páginas de um período e retorna a lista completa de OrderSummary. */
+export async function getAllOrderSummaries(
+  startDate: string,
+  endDate: string,
+  status: string[] = ["closed", "canceled"]
+): Promise<{ summaries: OrderSummary[]; total: number }> {
+  const first = await getOrderHistory(startDate, endDate, 1, 100, status);
+  const allSummaries = [...first.orders];
+  const totalPages = first.pagination.total_pages;
+
+  if (totalPages > 1) {
+    const pages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
+    const results = await Promise.all(
+      pages.map((p) => getOrderHistory(startDate, endDate, p, 100, status))
+    );
+    results.forEach((r) => allSummaries.push(...r.orders));
+  }
+
+  return { summaries: allSummaries, total: first.pagination.total_orders };
+}
+
+/** Busca detalhes de múltiplos pedidos em paralelo (máx 10 simultâneos). */
+export async function getOrderDetailsBatch(
+  orderIds: number[]
+): Promise<OrderDetail[]> {
+  const CONCURRENCY = 10;
+  const results: OrderDetail[] = [];
+
+  for (let i = 0; i < orderIds.length; i += CONCURRENCY) {
+    const chunk = orderIds.slice(i, i + CONCURRENCY);
+    const details = await Promise.all(chunk.map((id) => getOrderDetail(id)));
+    results.push(...details);
+  }
+
+  return results;
 }

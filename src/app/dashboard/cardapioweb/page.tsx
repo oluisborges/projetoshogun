@@ -1,100 +1,143 @@
-import { getCatalog, getStoreInfo } from "@/lib/cardapioweb/client";
-import type { Product } from "@/lib/cardapioweb/client";
+import { computeMetrics } from "@/lib/cardapioweb/metrics";
+import DateRangeForm from "./DateRangeForm";
 
-export default async function CardapioWebPage() {
-  let storeInfo = null;
-  let catalog = null;
+interface PageProps {
+  searchParams: { start?: string; end?: string };
+}
+
+function currentMonthRange() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1)
+    .toISOString()
+    .slice(0, 10);
+  const end = now.toISOString().slice(0, 10);
+  return { start, end };
+}
+
+export default async function CardapioWebPage({ searchParams }: PageProps) {
+  const { start: defaultStart, end: defaultEnd } = currentMonthRange();
+  const startDate = searchParams.start ?? defaultStart;
+  const endDate = searchParams.end ?? defaultEnd;
+
+  let metrics = null;
   let error: string | null = null;
 
   try {
-    [storeInfo, catalog] = await Promise.all([getStoreInfo(), getCatalog()]);
+    metrics = await computeMetrics(
+      new Date(startDate).toISOString(),
+      new Date(endDate + "T23:59:59").toISOString()
+    );
   } catch (err) {
-    error = err instanceof Error ? err.message : "Erro ao carregar dados";
+    error = err instanceof Error ? err.message : "Erro ao carregar métricas";
   }
 
-  const totalProducts = catalog?.categories.reduce(
-    (acc, cat) => acc + cat.products.length,
-    0
-  ) ?? 0;
-
-  const availableProducts = catalog?.categories.reduce(
-    (acc, cat) => acc + cat.products.filter((p: Product) => p.available).length,
-    0
-  ) ?? 0;
+  const fmt = (n: number) =>
+    n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   return (
     <main style={{ maxWidth: 1000, margin: "40px auto", padding: "0 24px" }}>
-      <a href="/" style={{ color: "#666", fontSize: 14, textDecoration: "none" }}>← Voltar</a>
+      <a href="/" style={{ color: "#666", fontSize: 14, textDecoration: "none" }}>
+        ← Voltar
+      </a>
       <h1 style={{ marginTop: 16, marginBottom: 4 }}>CardápioWeb</h1>
+      <p style={{ color: "#888", fontSize: 14, marginBottom: 24 }}>
+        Dashboard de performance
+      </p>
+
+      <DateRangeForm startDate={startDate} endDate={endDate} />
 
       {error && (
-        <div style={{ background: "#fee2e2", border: "1px solid #fca5a5", borderRadius: 8, padding: 16, marginBottom: 24, color: "#dc2626" }}>
+        <div
+          style={{
+            background: "#fee2e2",
+            border: "1px solid #fca5a5",
+            borderRadius: 8,
+            padding: 16,
+            marginBottom: 24,
+            color: "#dc2626",
+          }}
+        >
           <strong>Erro:</strong> {error}
         </div>
       )}
 
-      {storeInfo && (
-        <div style={{ background: "#fff", border: "1px solid #e5e5e5", borderRadius: 12, padding: 24, marginBottom: 24 }}>
-          <h2 style={{ margin: "0 0 12px" }}>{storeInfo.name}</h2>
-          <p style={{ margin: "0 0 4px", color: "#666" }}>{storeInfo.address}</p>
-          <p style={{ margin: 0, color: "#666" }}>{storeInfo.phone}</p>
-        </div>
-      )}
-
-      {catalog && (
+      {metrics && (
         <>
-          <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(3, 1fr)", marginBottom: 32 }}>
-            <StatCard label="Categorias" value={catalog.categories.length} />
-            <StatCard label="Total de produtos" value={totalProducts} />
-            <StatCard label="Produtos ativos" value={availableProducts} />
+          <div
+            style={{
+              display: "grid",
+              gap: 16,
+              gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))",
+              marginBottom: 8,
+            }}
+          >
+            <KpiCard
+              label="Pedidos"
+              value={String(metrics.totalOrders)}
+              color="#2563eb"
+            />
+            <KpiCard
+              label="Faturamento"
+              value={fmt(metrics.revenue)}
+              color="#16a34a"
+            />
+            <KpiCard
+              label="Ticket médio"
+              value={fmt(metrics.averageTicket)}
+              color="#9333ea"
+            />
+            <KpiCard
+              label="Novos clientes"
+              value={String(metrics.newCustomers)}
+              color="#ea580c"
+            />
+            <KpiCard
+              label="Clientes recorrentes"
+              value={String(metrics.recurringCustomers)}
+              color="#0891b2"
+            />
           </div>
 
-          <h2 style={{ marginBottom: 16 }}>Catálogo</h2>
-          {catalog.categories.map((category) => (
-            <div key={category.id} style={{ background: "#fff", border: "1px solid #e5e5e5", borderRadius: 12, padding: 24, marginBottom: 16 }}>
-              <h3 style={{ margin: "0 0 16px" }}>{category.name}</h3>
-              <div style={{ display: "grid", gap: 12 }}>
-                {category.products.map((product) => (
-                  <div key={product.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid #f0f0f0" }}>
-                    <div>
-                      <p style={{ margin: "0 0 4px", fontWeight: 500 }}>{product.name}</p>
-                      {product.description && (
-                        <p style={{ margin: 0, color: "#666", fontSize: 13 }}>{product.description}</p>
-                      )}
-                    </div>
-                    <div style={{ textAlign: "right", flexShrink: 0, marginLeft: 16 }}>
-                      {product.promotionalPrice ? (
-                        <>
-                          <p style={{ margin: "0 0 2px", color: "#999", fontSize: 12, textDecoration: "line-through" }}>
-                            R$ {product.price.toFixed(2)}
-                          </p>
-                          <p style={{ margin: 0, color: "#16a34a", fontWeight: 600 }}>
-                            R$ {product.promotionalPrice.toFixed(2)}
-                          </p>
-                        </>
-                      ) : (
-                        <p style={{ margin: 0, fontWeight: 600 }}>R$ {product.price.toFixed(2)}</p>
-                      )}
-                      <span style={{ fontSize: 11, color: product.available ? "#16a34a" : "#dc2626" }}>
-                        {product.available ? "Ativo" : "Inativo"}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
+          <p style={{ color: "#aaa", fontSize: 12, textAlign: "right", marginTop: 8 }}>
+            Atualizado em{" "}
+            {new Date(metrics.fetchedAt).toLocaleString("pt-BR")}
+            {" · "}
+            Recorrentes = compraram também no período anterior de{" "}
+            {metrics.totalOrders > 0
+              ? `${Math.round(
+                  (new Date(metrics.periodEnd).getTime() -
+                    new Date(metrics.periodStart).getTime()) /
+                    (1000 * 60 * 60 * 24)
+                )} dias`
+              : "–"}
+          </p>
         </>
       )}
     </main>
   );
 }
 
-function StatCard({ label, value }: { label: string; value: number }) {
+function KpiCard({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: string;
+  color: string;
+}) {
   return (
-    <div style={{ background: "#fff", border: "1px solid #e5e5e5", borderRadius: 12, padding: 20 }}>
-      <p style={{ margin: "0 0 4px", color: "#666", fontSize: 13 }}>{label}</p>
-      <p style={{ margin: 0, fontSize: 28, fontWeight: 700 }}>{value}</p>
+    <div
+      style={{
+        background: "#fff",
+        border: "1px solid #e5e5e5",
+        borderRadius: 12,
+        padding: "20px 24px",
+        borderTop: `4px solid ${color}`,
+      }}
+    >
+      <p style={{ margin: "0 0 8px", color: "#666", fontSize: 13 }}>{label}</p>
+      <p style={{ margin: 0, fontSize: 24, fontWeight: 700, color }}>{value}</p>
     </div>
   );
 }
