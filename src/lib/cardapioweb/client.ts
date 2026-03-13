@@ -116,6 +116,8 @@ export interface Payment {
 
 // ─── Funções da API ───────────────────────────────────────────────────────────
 
+import { cachedFetch } from "./cache";
+
 /** Histórico de pedidos com paginação. start/end em ISO 8601. */
 export async function getOrderHistory(
   startDate: string,
@@ -132,15 +134,17 @@ export async function getOrderHistory(
   });
   status.forEach((s) => params.append("status[]", s));
 
-  return request<OrderHistoryResponse>(
-    `/api/partner/v1/orders/history?${params}`,
-    true
+  const path = `/api/partner/v1/orders/history?${params}`;
+  return cachedFetch(`history:${path}`, () =>
+    request<OrderHistoryResponse>(path, true)
   );
 }
 
 /** Detalhe completo de um pedido (inclui customer e total). */
 export async function getOrderDetail(orderId: number): Promise<OrderDetail> {
-  return request<OrderDetail>(`/api/partner/v1/orders/${orderId}`, true);
+  return cachedFetch(`order:${orderId}`, () =>
+    request<OrderDetail>(`/api/partner/v1/orders/${orderId}`, true)
+  );
 }
 
 /** Busca TODAS as páginas de um período e retorna a lista completa de OrderSummary. */
@@ -164,11 +168,11 @@ export async function getAllOrderSummaries(
   return { summaries: allSummaries, total: first.pagination.total_orders };
 }
 
-/** Busca detalhes de múltiplos pedidos em paralelo (máx 10 simultâneos). */
+/** Busca detalhes de múltiplos pedidos em paralelo (máx 5 simultâneos para evitar rate limit). */
 export async function getOrderDetailsBatch(
   orderIds: number[]
 ): Promise<OrderDetail[]> {
-  const CONCURRENCY = 10;
+  const CONCURRENCY = 5;
   const results: OrderDetail[] = [];
 
   for (let i = 0; i < orderIds.length; i += CONCURRENCY) {
