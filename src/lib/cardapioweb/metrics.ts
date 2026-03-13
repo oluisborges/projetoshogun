@@ -23,17 +23,18 @@ export interface DashboardMetrics {
   fetchedAt: string;
 }
 
-/** Divide um intervalo grande em janelas de no máximo 6 meses. */
-function splitInto6MonthWindows(
+/** Divide um intervalo grande em janelas de no máximo 150 dias (~5 meses). */
+function splitIntoWindows(
   from: Date,
   to: Date
 ): Array<{ start: string; end: string }> {
+  const WINDOW_DAYS = 150;
   const windows: Array<{ start: string; end: string }> = [];
   let cursor = new Date(from);
 
   while (cursor < to) {
     const windowEnd = new Date(cursor);
-    windowEnd.setMonth(windowEnd.getMonth() + 6);
+    windowEnd.setDate(windowEnd.getDate() + WINDOW_DAYS);
     if (windowEnd > to) windowEnd.setTime(to.getTime());
 
     windows.push({
@@ -68,7 +69,7 @@ async function getHistoricalCustomerIds(
 
       if (periodStart >= periodEnd) return new Set<number>();
 
-      const windows = splitInto6MonthWindows(periodStart, periodEnd);
+      const windows = splitIntoWindows(periodStart, periodEnd);
 
       // Busca todos os resumos de pedidos em todas as janelas
       const allSummaryResults = await Promise.all(
