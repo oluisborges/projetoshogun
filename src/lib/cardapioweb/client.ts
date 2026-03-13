@@ -11,10 +11,16 @@ const BASE_URL =
 function getHeaders() {
   const token = process.env.CARDAPIOWEB_TOKEN;
   if (!token) throw new Error("CARDAPIOWEB_TOKEN não configurado no .env.local");
-  return {
-    Authorization: `Bearer ${token}`,
+
+  const headers: Record<string, string> = {
+    "X-API-KEY": token,
     "Content-Type": "application/json",
   };
+
+  const partnerKey = process.env.CARDAPIOWEB_PARTNER_KEY;
+  if (partnerKey) headers["X-PARTNER-KEY"] = partnerKey;
+
+  return headers;
 }
 
 async function request<T>(path: string, noCache = false): Promise<T> {
