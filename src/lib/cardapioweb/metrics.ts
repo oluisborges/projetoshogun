@@ -14,11 +14,22 @@ export async function computeMetrics(
   endDate: string
 ): Promise<DashboardMetrics> {
   const { summaries } = await getAllOrderSummaries(startDate, endDate, ["closed"]);
-  const details = await getOrderDetailsBatch(summaries.map((o) => o.id));
-  const closed = details.filter((o) => o.status === "closed");
 
-  const revenue = closed.reduce((sum, o) => sum + (o.total ?? 0), 0);
-  const totalOrders = closed.length;
+  // Se a API retornar total no sumário, usa direto — sem requests adicionais.
+  // Caso contrário, busca os detalhes individuais.
+  const hasTotals = summaries.length === 0 || summaries[0].total !== undefined;
+
+  let revenue = 0;
+  let totalOrders = summaries.length;
+
+  if (hasTotals) {
+    revenue = summaries.reduce((sum, o) => sum + (o.total ?? 0), 0);
+  } else {
+    const details = await getOrderDetailsBatch(summaries.map((o) => o.id));
+    const closed = details.filter((o) => o.status === "closed");
+    totalOrders = closed.length;
+    revenue = closed.reduce((sum, o) => sum + (o.total ?? 0), 0);
+  }
 
   return {
     totalOrders,

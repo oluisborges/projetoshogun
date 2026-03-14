@@ -58,6 +58,7 @@ export interface OrderSummary {
   order_type: "delivery" | "takeout" | "onsite" | "closed_table" | string;
   order_timing: "immediate" | "scheduled" | string;
   sales_channel: string;
+  total?: number;
   created_at: string;
   updated_at: string;
 }
