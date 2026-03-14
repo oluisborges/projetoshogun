@@ -1,5 +1,12 @@
+import { unstable_cache } from "next/cache";
 import { computeMetrics } from "@/lib/cardapioweb/metrics";
 import DateRangeForm from "./DateRangeForm";
+
+const getCachedMetrics = unstable_cache(
+  (startDate: string, endDate: string) => computeMetrics(startDate, endDate),
+  ["cardapioweb-metrics"],
+  { revalidate: 5 * 60 } // 5 minutos
+);
 
 interface PageProps {
   searchParams: { start?: string; end?: string };
@@ -32,7 +39,7 @@ export default async function CardapioWebPage({ searchParams }: PageProps) {
   let error: string | null = null;
 
   try {
-    metrics = await computeMetrics(
+    metrics = await getCachedMetrics(
       new Date(clampedStart).toISOString(),
       new Date(endDate + "T23:59:59").toISOString()
     );

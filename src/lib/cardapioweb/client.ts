@@ -26,7 +26,7 @@ function getHeaders() {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function request<T>(path: string, noCache = false): Promise<T> {
-  const delays = [2000, 4000, 8000]; // retry em caso de 429
+  const delays = [15000, 30000, 60000]; // retry em caso de 429
 
   for (let attempt = 0; attempt <= delays.length; attempt++) {
     const res = await fetch(`${BASE_URL}${path}`, {
