@@ -5,7 +5,7 @@
  * Recorrente      = comprou pelo menos 1x antes do período selecionado.
  *
  * Estratégia: buscamos TODO o histórico disponível ANTES do período
- * selecionado (até 3 anos atrás, em janelas de 6 meses conforme limite da API).
+ * selecionado (até 18 meses atrás, em janelas de ~5 meses conforme limite da API).
  * O histórico é cacheado por 1 hora pois dados antigos raramente mudam.
  */
 
@@ -51,7 +51,7 @@ function splitIntoWindows(
 
 /**
  * Retorna o conjunto de customer IDs que compraram ANTES de `beforeDate`.
- * Busca até 3 anos de histórico. Resultado cacheado por 1 hora.
+ * Busca até 18 meses de histórico. Resultado cacheado por 1 hora.
  */
 async function getHistoricalCustomerIds(
   beforeDate: string
@@ -65,7 +65,7 @@ async function getHistoricalCustomerIds(
       periodEnd.setDate(periodEnd.getDate() - 1);
 
       const periodStart = new Date(beforeDate);
-      periodStart.setFullYear(periodStart.getFullYear() - 3);
+      periodStart.setMonth(periodStart.getMonth() - 18);
 
       if (periodStart >= periodEnd) return new Set<number>();
 

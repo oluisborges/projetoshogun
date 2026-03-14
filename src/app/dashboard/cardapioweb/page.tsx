@@ -19,11 +19,11 @@ export default async function CardapioWebPage({ searchParams }: PageProps) {
   const startDate = searchParams.start ?? defaultStart;
   const endDate = searchParams.end ?? defaultEnd;
 
-  // A API rejeita datas com mais de 3 anos atrás
-  const threeYearsAgo = new Date();
-  threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
+  // Limite máximo de 18 meses atrás
+  const eighteenMonthsAgo = new Date();
+  eighteenMonthsAgo.setMonth(eighteenMonthsAgo.getMonth() - 18);
   const clampedStart = new Date(
-    Math.max(new Date(startDate).getTime(), threeYearsAgo.getTime())
+    Math.max(new Date(startDate).getTime(), eighteenMonthsAgo.getTime())
   )
     .toISOString()
     .slice(0, 10);
