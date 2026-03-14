@@ -1,4 +1,5 @@
-import db, { getLastSyncedDate } from "./db";
+import { sql } from "@vercel/postgres";
+import { getLastSyncedDate } from "./db";
 
 export interface DashboardMetrics {
   totalOrders: number;
@@ -10,22 +11,24 @@ export interface DashboardMetrics {
   lastSyncedAt: string | null;
 }
 
-export function computeMetrics(
+export async function computeMetrics(
+  storeId: string,
   startDate: string,
   endDate: string
-): DashboardMetrics {
-  const row = db
-    .prepare(
-      `SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as revenue
-       FROM orders
-       WHERE status = 'closed'
-         AND created_at >= ?
-         AND created_at <= ?`
-    )
-    .get(startDate, endDate) as { count: number; revenue: number };
+): Promise<DashboardMetrics> {
+  const { rows } = await sql`
+    SELECT
+      COUNT(*)::int                    AS count,
+      COALESCE(SUM(total), 0)::float8  AS revenue
+    FROM orders
+    WHERE store_id  = ${storeId}
+      AND status    = 'closed'
+      AND created_at >= ${startDate}
+      AND created_at <= ${endDate}
+  `;
 
-  const totalOrders = row.count;
-  const revenue = row.revenue;
+  const totalOrders = rows[0].count as number;
+  const revenue = rows[0].revenue as number;
 
   return {
     totalOrders,
@@ -34,6 +37,6 @@ export function computeMetrics(
     periodStart: startDate,
     periodEnd: endDate,
     fetchedAt: new Date().toISOString(),
-    lastSyncedAt: getLastSyncedDate(),
+    lastSyncedAt: await getLastSyncedDate(storeId),
   };
 }

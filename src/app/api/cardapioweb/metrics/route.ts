@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { computeMetrics } from "@/lib/cardapioweb/metrics";
 
+const DEFAULT_STORE_ID = () =>
+  process.env.CARDAPIOWEB_STORE_ID ?? "default";
+
 function currentMonthRange() {
   const now = new Date();
   const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
@@ -10,6 +13,7 @@ function currentMonthRange() {
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
+  const storeId = searchParams.get("store_id") ?? DEFAULT_STORE_ID();
 
   const { start: defaultStart, end: defaultEnd } = currentMonthRange();
   const rawStart = searchParams.get("start") ?? defaultStart;
@@ -20,12 +24,13 @@ export async function GET(request: Request) {
   const startDate = new Date(
     Math.max(new Date(rawStart).getTime(), eighteenMonthsAgo.getTime())
   ).toISOString();
-  const endDate = rawEnd.length === 10
-    ? new Date(rawEnd + "T23:59:59").toISOString()
-    : rawEnd;
+  const endDate =
+    rawEnd.length === 10
+      ? new Date(rawEnd + "T23:59:59").toISOString()
+      : rawEnd;
 
   try {
-    const metrics = computeMetrics(startDate, endDate);
+    const metrics = await computeMetrics(storeId, startDate, endDate);
     return NextResponse.json(metrics);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erro desconhecido";
