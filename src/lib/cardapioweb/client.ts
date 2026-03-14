@@ -186,7 +186,7 @@ export async function getAllOrderSummaries(
 export async function getOrderDetailsBatch(
   orderIds: number[]
 ): Promise<OrderDetail[]> {
-  const CONCURRENCY = 20;
+  const CONCURRENCY = 50;
   const results: OrderDetail[] = [];
 
   for (let i = 0; i < orderIds.length; i += CONCURRENCY) {
