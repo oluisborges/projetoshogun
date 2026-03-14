@@ -1,4 +1,6 @@
-import { sql } from "@vercel/postgres";
+import { neon } from "@neondatabase/serverless";
+
+const sql = neon(process.env.DATABASE_URL!);
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
 
@@ -56,22 +58,22 @@ export interface StoreRow {
 }
 
 export async function getStore(storeId: string): Promise<StoreRow | null> {
-  const { rows } = await sql<StoreRow>`
+  const rows = await sql`
     SELECT id, name, cw_token, cw_base_url, active
       FROM stores
      WHERE id = ${storeId}
   `;
-  return rows[0] ?? null;
+  return (rows[0] as StoreRow) ?? null;
 }
 
 export async function getActiveStores(): Promise<StoreRow[]> {
-  const { rows } = await sql<StoreRow>`
+  const rows = await sql`
     SELECT id, name, cw_token, cw_base_url, active
       FROM stores
      WHERE active = true
      ORDER BY name
   `;
-  return rows;
+  return rows as StoreRow[];
 }
 
 /**
@@ -101,7 +103,7 @@ export async function ensureDefaultStore() {
 // ─── Sync meta ────────────────────────────────────────────────────────────────
 
 export async function getLastSyncedDate(storeId: string): Promise<string | null> {
-  const { rows } = await sql`
+  const rows = await sql`
     SELECT value FROM sync_meta
      WHERE store_id = ${storeId} AND key = 'last_synced_at'
   `;

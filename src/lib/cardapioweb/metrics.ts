@@ -1,5 +1,7 @@
-import { sql } from "@vercel/postgres";
+import { neon } from "@neondatabase/serverless";
 import { getLastSyncedDate } from "./db";
+
+const sql = neon(process.env.DATABASE_URL!);
 
 export interface DashboardMetrics {
   totalOrders: number;
@@ -16,7 +18,7 @@ export async function computeMetrics(
   startDate: string,
   endDate: string
 ): Promise<DashboardMetrics> {
-  const { rows } = await sql`
+  const rows = await sql`
     SELECT
       COUNT(*)::int                    AS count,
       COALESCE(SUM(total), 0)::float8  AS revenue
