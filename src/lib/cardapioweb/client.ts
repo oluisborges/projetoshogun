@@ -171,20 +171,21 @@ export async function getAllOrderSummaries(
   const totalPages = first.pagination.total_pages;
 
   if (totalPages > 1) {
-    for (let p = 2; p <= totalPages; p++) {
-      const result = await getOrderHistory(startDate, endDate, p, 100, status);
-      allSummaries.push(...result.orders);
-    }
+    const pages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
+    const results = await Promise.all(
+      pages.map((p) => getOrderHistory(startDate, endDate, p, 100, status))
+    );
+    results.forEach((r) => allSummaries.push(...r.orders));
   }
 
   return { summaries: allSummaries, total: first.pagination.total_orders };
 }
 
-/** Busca detalhes de múltiplos pedidos em paralelo (máx 5 simultâneos para evitar rate limit). */
+/** Busca detalhes de múltiplos pedidos em paralelo (máx 20 simultâneos). */
 export async function getOrderDetailsBatch(
   orderIds: number[]
 ): Promise<OrderDetail[]> {
-  const CONCURRENCY = 5;
+  const CONCURRENCY = 20;
   const results: OrderDetail[] = [];
 
   for (let i = 0; i < orderIds.length; i += CONCURRENCY) {
