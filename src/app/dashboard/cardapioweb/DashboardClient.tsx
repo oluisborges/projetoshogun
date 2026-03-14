@@ -167,14 +167,10 @@ export default function DashboardClient() {
             <KpiCard label="Pedidos" value={String(metrics.totalOrders)} color="#2563eb" />
             <KpiCard label="Faturamento" value={fmt(metrics.revenue)} color="#16a34a" />
             <KpiCard label="Ticket médio" value={fmt(metrics.averageTicket)} color="#9333ea" />
-            <KpiCard label="Novos clientes" value={String(metrics.newCustomers)} color="#ea580c" />
-            <KpiCard label="Clientes recorrentes" value={String(metrics.recurringCustomers)} color="#0891b2" />
           </div>
 
           <p style={{ color: "#aaa", fontSize: 12, textAlign: "right", marginTop: 8 }}>
             Atualizado em {new Date(metrics.fetchedAt).toLocaleString("pt-BR")}
-            {" · "}
-            Recorrente = comprou pelo menos 1x antes do período · Novo = nunca comprou antes
           </p>
         </>
       )}
