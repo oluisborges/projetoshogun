@@ -23,18 +23,31 @@ function getHeaders() {
   return headers;
 }
 
-async function request<T>(path: string, noCache = false): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    headers: getHeaders(),
-    next: noCache ? { revalidate: 0 } : { revalidate: 300 },
-  });
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`CW API ${res.status} em ${path}: ${text}`);
+async function request<T>(path: string, noCache = false): Promise<T> {
+  const delays = [2000, 4000, 8000]; // retry em caso de 429
+
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      headers: getHeaders(),
+      next: noCache ? { revalidate: 0 } : { revalidate: 300 },
+    });
+
+    if (res.status === 429 && attempt < delays.length) {
+      await sleep(delays[attempt]);
+      continue;
+    }
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`CW API ${res.status} em ${path}: ${text}`);
+    }
+
+    return res.json() as Promise<T>;
   }
 
-  return res.json() as Promise<T>;
+  throw new Error(`CW API: limite de requisições excedido em ${path}`);
 }
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
