@@ -12,8 +12,17 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
   const { start: defaultStart, end: defaultEnd } = currentMonthRange();
-  const startDate = searchParams.get("start") ?? defaultStart;
-  const endDate = searchParams.get("end") ?? defaultEnd;
+  const rawStart = searchParams.get("start") ?? defaultStart;
+  const rawEnd = searchParams.get("end") ?? defaultEnd;
+
+  const eighteenMonthsAgo = new Date();
+  eighteenMonthsAgo.setMonth(eighteenMonthsAgo.getMonth() - 18);
+  const startDate = new Date(
+    Math.max(new Date(rawStart).getTime(), eighteenMonthsAgo.getTime())
+  ).toISOString();
+  const endDate = rawEnd.length === 10
+    ? new Date(rawEnd + "T23:59:59").toISOString()
+    : rawEnd;
 
   try {
     const metrics = await computeMetrics(startDate, endDate);
