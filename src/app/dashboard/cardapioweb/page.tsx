@@ -19,12 +19,21 @@ export default async function CardapioWebPage({ searchParams }: PageProps) {
   const startDate = searchParams.start ?? defaultStart;
   const endDate = searchParams.end ?? defaultEnd;
 
+  // A API rejeita datas com mais de 3 anos atrás
+  const threeYearsAgo = new Date();
+  threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3);
+  const clampedStart = new Date(
+    Math.max(new Date(startDate).getTime(), threeYearsAgo.getTime())
+  )
+    .toISOString()
+    .slice(0, 10);
+
   let metrics = null;
   let error: string | null = null;
 
   try {
     metrics = await computeMetrics(
-      new Date(startDate).toISOString(),
+      new Date(clampedStart).toISOString(),
       new Date(endDate + "T23:59:59").toISOString()
     );
   } catch (err) {
