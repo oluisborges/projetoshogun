@@ -1,4 +1,4 @@
-import { getAllOrderSummaries, getOrderDetailsBatch, OrderSummary } from "./client";
+import db, { getLastSyncedDate } from "./db";
 
 export interface DashboardMetrics {
   totalOrders: number;
@@ -7,26 +7,25 @@ export interface DashboardMetrics {
   periodStart: string;
   periodEnd: string;
   fetchedAt: string;
+  lastSyncedAt: string | null;
 }
 
-export async function computeMetrics(
+export function computeMetrics(
   startDate: string,
   endDate: string
-): Promise<DashboardMetrics> {
-  const { summaries } = await getAllOrderSummaries(startDate, endDate, ["closed"]);
+): DashboardMetrics {
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) as count, COALESCE(SUM(total), 0) as revenue
+       FROM orders
+       WHERE status = 'closed'
+         AND created_at >= ?
+         AND created_at <= ?`
+    )
+    .get(startDate, endDate) as { count: number; revenue: number };
 
-  // Usa total do summary quando disponível; só busca detalhes dos que não têm
-  const withTotal: OrderSummary[] = summaries.filter((o) => o.total != null);
-  const withoutTotal: OrderSummary[] = summaries.filter((o) => o.total == null);
-
-  const details = withoutTotal.length > 0
-    ? await getOrderDetailsBatch(withoutTotal.map((o) => o.id))
-    : [];
-
-  const revenueFromSummaries = withTotal.reduce((sum, o) => sum + o.total!, 0);
-  const revenueFromDetails = details.reduce((sum, o) => sum + (o.total ?? 0), 0);
-  const revenue = revenueFromSummaries + revenueFromDetails;
-  const totalOrders = summaries.length;
+  const totalOrders = row.count;
+  const revenue = row.revenue;
 
   return {
     totalOrders,
@@ -35,5 +34,6 @@ export async function computeMetrics(
     periodStart: startDate,
     periodEnd: endDate,
     fetchedAt: new Date().toISOString(),
+    lastSyncedAt: getLastSyncedDate(),
   };
 }

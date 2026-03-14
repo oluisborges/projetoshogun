@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { DashboardMetrics } from "@/lib/cardapioweb/metrics";
 
 type Preset = "this_month" | "last_month" | "last_7d" | "last_30d";
@@ -40,7 +40,17 @@ export default function DashboardClient() {
   const [end, setEnd] = useState(today);
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/cardapioweb/sync")
+      .then((r) => r.json())
+      .then((d) => setLastSyncedAt(d.lastSyncedAt ?? null))
+      .catch(() => null);
+  }, []);
 
   async function load(startDate: string, endDate: string) {
     setLoading(true);
@@ -51,10 +61,30 @@ export default function DashboardClient() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Erro ao carregar métricas");
       setMetrics(data);
+      setLastSyncedAt(data.lastSyncedAt ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao carregar métricas");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function sync() {
+    setSyncing(true);
+    setSyncStatus(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/cardapioweb/sync", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Erro ao sincronizar");
+      setSyncStatus(`${data.synced} pedido(s) sincronizados`);
+      setLastSyncedAt(data.lastSyncedAt);
+      // Recarrega métricas do período atual após sync
+      await load(start, end);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao sincronizar");
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -75,6 +105,46 @@ export default function DashboardClient() {
 
   return (
     <>
+      {/* Barra de sincronização */}
+      <div
+        style={{
+          background: "#f0fdf4",
+          border: "1px solid #bbf7d0",
+          borderRadius: 10,
+          padding: "12px 16px",
+          marginBottom: 16,
+          display: "flex",
+          alignItems: "center",
+          gap: 16,
+          flexWrap: "wrap",
+        }}
+      >
+        <button
+          onClick={sync}
+          disabled={syncing || loading}
+          style={{
+            padding: "6px 16px",
+            borderRadius: 6,
+            border: "none",
+            background: syncing ? "#86efac" : "#16a34a",
+            color: "#fff",
+            fontWeight: 600,
+            fontSize: 13,
+            cursor: syncing ? "not-allowed" : "pointer",
+          }}
+        >
+          {syncing ? "Sincronizando…" : "Sincronizar pedidos"}
+        </button>
+        <span style={{ fontSize: 12, color: "#166534" }}>
+          {syncStatus
+            ? `✓ ${syncStatus}`
+            : lastSyncedAt
+            ? `Última sync: ${new Date(lastSyncedAt).toLocaleString("pt-BR")}`
+            : "Nenhuma sincronização realizada ainda"}
+        </span>
+      </div>
+
+      {/* Filtros */}
       <div
         style={{
           background: "#fff",
@@ -86,7 +156,7 @@ export default function DashboardClient() {
       >
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
           {(["this_month", "last_month", "last_7d", "last_30d"] as Preset[]).map((p) => (
-            <button key={p} style={btnStyle} onClick={() => handlePreset(p)} disabled={loading}>
+            <button key={p} style={btnStyle} onClick={() => handlePreset(p)} disabled={loading || syncing}>
               {p === "this_month" ? "Mês atual" : p === "last_month" ? "Mês passado" : p === "last_7d" ? "Últimos 7 dias" : "Últimos 30 dias"}
             </button>
           ))}
@@ -116,7 +186,7 @@ export default function DashboardClient() {
           </label>
           <button
             type="submit"
-            disabled={loading}
+            disabled={loading || syncing}
             style={{
               padding: "7px 20px",
               borderRadius: 6,
@@ -129,7 +199,7 @@ export default function DashboardClient() {
             }}
           >
             {loading ? "Carregando…" : "Filtrar"}
-        </button>
+          </button>
         </form>
       </div>
 
@@ -150,7 +220,9 @@ export default function DashboardClient() {
 
       {!metrics && !loading && !error && (
         <p style={{ color: "#aaa", fontSize: 14, textAlign: "center", marginTop: 40 }}>
-          Selecione um período e clique em <strong>Filtrar</strong> para carregar os dados.
+          {lastSyncedAt
+            ? <>Selecione um período e clique em <strong>Filtrar</strong>.</>
+            : <>Clique em <strong>Sincronizar pedidos</strong> primeiro para importar os dados.</>}
         </p>
       )}
 
@@ -170,7 +242,7 @@ export default function DashboardClient() {
           </div>
 
           <p style={{ color: "#aaa", fontSize: 12, textAlign: "right", marginTop: 8 }}>
-            Atualizado em {new Date(metrics.fetchedAt).toLocaleString("pt-BR")}
+            Dados do banco local · Atualizado em {new Date(metrics.fetchedAt).toLocaleString("pt-BR")}
           </p>
         </>
       )}

@@ -25,7 +25,7 @@ export async function GET(request: Request) {
     : rawEnd;
 
   try {
-    const metrics = await computeMetrics(startDate, endDate);
+    const metrics = computeMetrics(startDate, endDate);
     return NextResponse.json(metrics);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erro desconhecido";
