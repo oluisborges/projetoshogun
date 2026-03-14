@@ -171,11 +171,10 @@ export async function getAllOrderSummaries(
   const totalPages = first.pagination.total_pages;
 
   if (totalPages > 1) {
-    const pages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
-    const results = await Promise.all(
-      pages.map((p) => getOrderHistory(startDate, endDate, p, 100, status))
-    );
-    results.forEach((r) => allSummaries.push(...r.orders));
+    for (let p = 2; p <= totalPages; p++) {
+      const result = await getOrderHistory(startDate, endDate, p, 100, status);
+      allSummaries.push(...result.orders);
+    }
   }
 
   return { summaries: allSummaries, total: first.pagination.total_orders };

@@ -71,14 +71,12 @@ async function getHistoricalCustomerIds(
 
       const windows = splitIntoWindows(periodStart, periodEnd);
 
-      // Busca todos os resumos de pedidos em todas as janelas
-      const allSummaryResults = await Promise.all(
-        windows.map((w) => getAllOrderSummaries(w.start, w.end, ["closed"]))
-      );
-
-      const allIds = allSummaryResults.flatMap((r) =>
-        r.summaries.map((o) => o.id)
-      );
+      // Busca janelas sequencialmente para evitar rate limit (429)
+      const allIds: number[] = [];
+      for (const w of windows) {
+        const result = await getAllOrderSummaries(w.start, w.end, ["closed"]);
+        result.summaries.forEach((o) => allIds.push(o.id));
+      }
 
       if (allIds.length === 0) return new Set<number>();
 
@@ -100,11 +98,8 @@ export async function computeMetrics(
   startDate: string,
   endDate: string
 ): Promise<DashboardMetrics> {
-  // Busca pedidos do período atual e histórico de clientes em paralelo
-  const [currentResult, historicalCustomerIds] = await Promise.all([
-    getAllOrderSummaries(startDate, endDate, ["closed"]),
-    getHistoricalCustomerIds(startDate),
-  ]);
+  const currentResult = await getAllOrderSummaries(startDate, endDate, ["closed"]);
+  const historicalCustomerIds = await getHistoricalCustomerIds(startDate);
 
   const currentIds = currentResult.summaries.map((o) => o.id);
   const currentDetails = await getOrderDetailsBatch(currentIds);
